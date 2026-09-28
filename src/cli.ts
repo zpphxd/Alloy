@@ -3,10 +3,13 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
-import { FLIES } from "../config/flies.ts";
+import { FLIES, LOOKALIKE_SEEDS } from "../config/flies.ts";
 import type { Stage, Technology } from "./domain/types.ts";
 import { estimateProject } from "./economics/estimate.ts";
-import { downloadLatest, GIS_REPORT_TYPE_ID, parseGisReport } from "./sources/ercot/gis-report.ts";
+import { downloadLatest, GIS_REPORT_TYPE_ID, listMisDocuments, parseGisReport } from "./sources/ercot/gis-report.ts";
+import { parseAsOf } from "./sources/ercot/as-of.ts";
+import { fitSeeds } from "./fit/seed-fit.ts";
+import { fitToMarkdown } from "./fit/report.ts";
 import { diffSnapshots } from "./triggers/diff.ts";
 import { Store } from "./store/db.ts";
 import { dossier, hunt } from "./pipeline/hunt.ts";
@@ -22,6 +25,11 @@ const HELP = `pescadora: hunt for exactly the clients we want
 
   ingest ercot [--file GIS_Report.xlsx]   Load the ERCOT GIS report (downloads the latest if no file),
                                           snapshot it, and diff against last month for triggers.
+  backfill ercot --dir <folder> | --download [--max N]
+                                          Load many back GIS reports (oldest first) so the history
+                                          has trigger timelines and the fit step has something to fit.
+  fit [--lookback 24]                     Measure the seed companies/projects over history and propose
+                                          a "seed-lookalike" fly. Writes data/out/fit-<date>.md.
   hunt [--qualify N] [--limit N]          Resolve owners, match flies, screen, route. Writes
                                           data/out/hunt-<date>.{md,csv}. --qualify runs Claude on the top N.
   resolve [--top N]                       Web-research unresolved owners among the top N targets.
@@ -52,6 +60,18 @@ async function loadContext() {
   return { aliases, connections, crm };
 }
 
+async function ingestOne(s: Store, bytes: Buffer, label: string, asOf?: string) {
+  const projects = await parseGisReport(bytes);
+  const when = asOf ?? parseAsOf(label) ?? undefined;
+  // The previous snapshot is the latest one dated before this report.
+  const prev = s.allSnapshots("ercot_gis").filter((x) => !when || x.asOf < when).at(-1);
+  const id = s.saveSnapshot("ercot_gis", label, projects, when);
+  const triggers = prev ? diffSnapshots(prev.projects, projects, when ? { now: new Date(when) } : {}) : [];
+  s.saveTriggers(id, triggers);
+  const counts = triggers.reduce<Record<string, number>>((m, t) => ((m[t.kind] = (m[t.kind] ?? 0) + 1), m), {});
+  console.log(`Snapshot #${id} "${label}" (as of ${when ?? "today"}): ${projects.length} projects. ${prev ? `Triggers: ${JSON.stringify(counts)}` : "No earlier snapshot to diff."}`);
+}
+
 function runHunt(store: Store, ctx: Awaited<ReturnType<typeof loadContext>>) {
   const [latest] = store.latestSnapshots("ercot_gis", 1);
   if (!latest) throw new Error("No ERCOT snapshot yet. Run: pescadora ingest ercot");
@@ -74,19 +94,66 @@ async function main() {
       } else {
         const { doc, bytes: b } = await downloadLatest(GIS_REPORT_TYPE_ID, "GIS_Report");
         bytes = b;
-        label = doc.friendlyName;
+        label = doc.constructedName;
         await mkdir("data/raw", { recursive: true });
-        await writeFile(join("data/raw", `${doc.constructedName}.xlsx`), b);
+        await writeFile(join("data/raw", doc.constructedName), b);
       }
-      const projects = await parseGisReport(bytes);
+      await ingestOne(store(), bytes, label);
+      break;
+    }
+
+    case "backfill": {
+      if (sub !== "ercot") throw new Error("Usage: pescadora backfill ercot --dir <folder> | --download");
+      const { values } = parseArgs({ args: rest, options: { dir: { type: "string" }, download: { type: "boolean" }, max: { type: "string" } } });
       const s = store();
-      const [prev] = s.latestSnapshots("ercot_gis", 1);
-      const id = s.saveSnapshot("ercot_gis", label, projects);
-      const triggers = prev ? diffSnapshots(prev.projects, projects) : [];
-      s.saveTriggers(id, triggers);
-      const counts = triggers.reduce<Record<string, number>>((m, t) => ((m[t.kind] = (m[t.kind] ?? 0) + 1), m), {});
-      console.log(`Snapshot #${id} "${label}": ${projects.length} projects.`);
-      console.log(prev ? `Triggers vs "${prev.label}": ${JSON.stringify(counts)}` : "First snapshot: triggers start next month.");
+      const files: Array<{ label: string; asOf: string | null; load: () => Promise<Buffer> }> = [];
+      if (values.dir) {
+        for (const f of await readdir(values.dir)) {
+          if (f.endsWith(".xlsx")) files.push({ label: f, asOf: parseAsOf(f), load: () => readFile(join(values.dir!, f)) });
+        }
+      } else if (values.download) {
+        const docs = (await listMisDocuments(GIS_REPORT_TYPE_ID)).filter((d) => d.constructedName.includes("GIS_Report"));
+        await mkdir("data/raw", { recursive: true });
+        for (const d of docs.slice(0, Number(values.max ?? 1000))) {
+          files.push({
+            label: d.constructedName,
+            asOf: parseAsOf(d.constructedName) ?? d.publishDate.slice(0, 10),
+            load: async () => {
+              const res = await fetch(d.url, { headers: { "User-Agent": "pescadora/0.1 (research)" } });
+              if (!res.ok) throw new Error(`Download failed for ${d.constructedName}: ${res.status}`);
+              const b = Buffer.from(await res.arrayBuffer());
+              await writeFile(join("data/raw", d.constructedName), b);
+              return b;
+            },
+          });
+        }
+        console.log(`ERCOT lists ${docs.length} GIS reports; loading ${files.length}.`);
+      } else throw new Error("Pass --dir <folder> or --download");
+
+      files.sort((a, b) => (a.asOf ?? "").localeCompare(b.asOf ?? ""));
+      for (const f of files) {
+        if (s.hasSnapshot("ercot_gis", f.label)) continue;
+        try {
+          await ingestOne(s, await f.load(), f.label, f.asOf ?? undefined);
+        } catch (err) {
+          console.error(`Skipped ${f.label}: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+      break;
+    }
+
+    case "fit": {
+      const { values } = parseArgs({ args: [sub ?? "", ...rest].filter(Boolean), options: { lookback: { type: "string" } } });
+      const s = store();
+      const ctx = await loadContext();
+      const fit = fitSeeds(s.allSnapshots("ercot_gis"), LOOKALIKE_SEEDS, ctx.aliases, Number(values.lookback ?? 24));
+      const [latest] = s.latestSnapshots("ercot_gis", 1);
+      const preview = fit.proposedFly && latest ? hunt({ projects: latest.projects, flies: [fit.proposedFly], ...ctx }) : undefined;
+      const date = new Date().toISOString().slice(0, 10);
+      await mkdir("data/out", { recursive: true });
+      await writeFile(`data/out/fit-${date}.md`, fitToMarkdown(fit, preview));
+      for (const n of fit.notes) console.log(`note: ${n}`);
+      console.log(`Fit written to data/out/fit-${date}.md${preview ? ` (${preview.targets.length} current matches)` : ""}.`);
       break;
     }
 

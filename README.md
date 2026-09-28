@@ -8,7 +8,9 @@ It was born on the 2026-09-28 call between Zach and Paul ("Solar and Storage Pro
 
 Named for Pescador On The Fly, the off-brand reel that outperforms the big names without their marketing. The target profiles are **flies**, the data sources are **streams**, and the output is a ranked list of fish, each with a reason to call now and a warm way in.
 
-- **What we're hunting and why:** [docs/BRIEF-2026-09-28.md](docs/BRIEF-2026-09-28.md)
+- **Exactly who we're hunting:** [docs/TARGET-PROFILE.md](docs/TARGET-PROFILE.md)
+- **The source call and economics:** [docs/BRIEF-2026-09-28.md](docs/BRIEF-2026-09-28.md)
+- **Picking this up on desktop (Jev, back reports, fit):** [HANDOFF.md](HANDOFF.md)
 - **How the machine works:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## How it works
@@ -35,6 +37,10 @@ cp .env.example .env          # add ANTHROPIC_API_KEY; ZoomInfo creds optional
 
 # 1. Load the ERCOT GIS report: downloads the latest, or pass the file Paul sends
 npm run pescadora -- ingest ercot --file ~/Downloads/GIS_Report_August2026.xlsx
+
+# 1b. Load years of back reports, then fit the profiles to how the seed companies grew
+npm run pescadora -- backfill ercot --download        # or: --dir <folder of GIS reports>
+npm run pescadora -- fit --lookback 24                # → data/out/fit-<date>.md
 
 # 2. Optional context (all gitignored under data/):
 #    data/linkedin/zach.csv, data/linkedin/paul.csv   LinkedIn "Connections" exports
@@ -75,6 +81,7 @@ src/portfolio/   per-owner rollup by stage and technology
 src/flies/       deterministic gate evaluation + exclusions
 src/screen/      Baldwin / CAC CRM screen
 src/route/       warm paths from LinkedIn exports
+src/fit/         fit profiles to history (seeds two years ago → proposed fly)
 src/qualify/     yes/no qualifier: swappable engine (Jev planned, Claude now), cached
 src/economics/   premium + tax commission estimates (Paul's rules of thumb)
 src/enrich/      ZoomInfo (API client + saved-session loader)

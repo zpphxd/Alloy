@@ -77,6 +77,10 @@ Each fly has two parts:
 - **Gates**: hard numeric filters, run in code (MW operating, MW pipeline, project size band, COD window, well count). They're deterministic and auditable, and every pass or fail carries a readable reason.
 - **Rubric**: judgment calls for the qualifier (independent vs. major, actively growing, complex risk). Each criterion is marked required or not.
 
+### 4b. Fitting flies to history: `src/fit/`
+
+`pescadora backfill` loads back GIS reports in date order. `pescadora fit` then tracks the seed companies (Nightpeak, Primergy Power, Avantus) and seed projects across them. It reads off each seed's shape at the lookback point (default 24 months back) and the seed projects' milestone timing. It widens those into a proposed `seed-lookalike` fly and previews who matches it today. The proposal is reviewed by people, never auto-applied.
+
 ### 5. Screening: `config/exclusions.ts`, `src/screen/`
 
 - **Exclusions**: majors and anything too big, matched as whole words against the owner, aliases, and parent.

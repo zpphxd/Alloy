@@ -4,6 +4,13 @@ import { DatabaseSync } from "node:sqlite";
 import type { Project, Trigger } from "../domain/types.ts";
 import type { Qualification, QualificationCache } from "../qualify/qualifier.ts";
 
+export interface Snapshot {
+  id: number;
+  label: string;
+  asOf: string;
+  projects: Project[];
+}
+
 /**
  * Local SQLite store (Node's built-in node:sqlite, so there's no native
  * dependency). Snapshots are kept whole, so any two months can be diffed
@@ -20,7 +27,8 @@ export class Store implements QualificationCache {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         source TEXT NOT NULL,
         label TEXT NOT NULL,
-        taken_at TEXT NOT NULL
+        taken_at TEXT NOT NULL,
+        as_of TEXT
       );
       CREATE TABLE IF NOT EXISTS snapshot_projects (
         snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
@@ -46,12 +54,17 @@ export class Store implements QualificationCache {
         data TEXT NOT NULL
       );
     `);
+    // Databases created before as_of existed.
+    const cols = this.db.prepare("PRAGMA table_info(snapshots)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "as_of")) this.db.exec("ALTER TABLE snapshots ADD COLUMN as_of TEXT");
   }
 
-  saveSnapshot(source: string, label: string, projects: Project[]): number {
+  /** `asOf` is the date the report describes; snapshots sort by it, not by load order. */
+  saveSnapshot(source: string, label: string, projects: Project[], asOf?: string): number {
+    const takenAt = new Date().toISOString();
     const { lastInsertRowid } = this.db
-      .prepare("INSERT INTO snapshots (source, label, taken_at) VALUES (?, ?, ?)")
-      .run(source, label, new Date().toISOString());
+      .prepare("INSERT INTO snapshots (source, label, taken_at, as_of) VALUES (?, ?, ?, ?)")
+      .run(source, label, takenAt, asOf ?? takenAt.slice(0, 10));
     const id = Number(lastInsertRowid);
     const ins = this.db.prepare("INSERT OR REPLACE INTO snapshot_projects (snapshot_id, project_id, data) VALUES (?, ?, ?)");
     this.db.exec("BEGIN");
@@ -60,17 +73,30 @@ export class Store implements QualificationCache {
     return id;
   }
 
-  /** The two most recent snapshots for a source, newest first. */
-  latestSnapshots(source: string, n = 2): Array<{ id: number; label: string; projects: Project[] }> {
+  /** Most recent snapshots for a source, newest first. */
+  latestSnapshots(source: string, n = 2): Snapshot[] {
     const snaps = this.db
-      .prepare("SELECT id, label FROM snapshots WHERE source = ? ORDER BY id DESC LIMIT ?")
-      .all(source, n) as Array<{ id: number; label: string }>;
-    return snaps.map((s) => ({
-      ...s,
-      projects: (this.db.prepare("SELECT data FROM snapshot_projects WHERE snapshot_id = ?").all(s.id) as Array<{ data: string }>).map(
-        (r) => JSON.parse(r.data) as Project,
-      ),
-    }));
+      .prepare("SELECT id, label, as_of AS asOf FROM snapshots WHERE source = ? ORDER BY as_of DESC, id DESC LIMIT ?")
+      .all(source, n) as Array<Omit<Snapshot, "projects">>;
+    return snaps.map((s) => ({ ...s, projects: this.projectsOf(s.id) }));
+  }
+
+  /** Every snapshot for a source, oldest first: the history the fit step reads. */
+  allSnapshots(source: string): Snapshot[] {
+    const snaps = this.db
+      .prepare("SELECT id, label, as_of AS asOf FROM snapshots WHERE source = ? ORDER BY as_of ASC, id ASC")
+      .all(source) as Array<Omit<Snapshot, "projects">>;
+    return snaps.map((s) => ({ ...s, projects: this.projectsOf(s.id) }));
+  }
+
+  hasSnapshot(source: string, label: string): boolean {
+    return this.db.prepare("SELECT 1 FROM snapshots WHERE source = ? AND label = ?").get(source, label) !== undefined;
+  }
+
+  private projectsOf(snapshotId: number): Project[] {
+    return (this.db.prepare("SELECT data FROM snapshot_projects WHERE snapshot_id = ?").all(snapshotId) as Array<{ data: string }>).map(
+      (r) => JSON.parse(r.data) as Project,
+    );
   }
 
   saveTriggers(snapshotId: number, triggers: Trigger[]): void {
