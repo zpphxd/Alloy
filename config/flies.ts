@@ -166,11 +166,13 @@ export const FLIES: Fly[] = [
 /**
  * Seed accounts for lookalike search. Paul: "Where were these companies like
  * two years ago? Go find me some today that look like these two years ago."
- * Names come from the transcript, so spellings are phonetic. Verify them.
  */
 export const LOOKALIKE_SEEDS = {
-  // "Avantus" was transcribed as "Advantis"; Primergy may now go by "Primergy Power".
-  companies: ["Nightpeak Energy", "Primergy", "Avantus"],
-  /** Projects of the right shape; find owners that have projects like these. */
-  projects: ["Ash Creek", "Gemini", "Actina", "Longbow", "Spoken 1", "Spoken 2", "Fairy Mouse"],
+  // Spellings confirmed in Paul's follow-up text (2026-09-28). Search for how
+  // these companies looked two years ago, when they started growing.
+  companies: ["Nightpeak Energy", "Primergy Power", "Avantus"],
+  /** Former names, for matching older filings and ZoomInfo records. */
+  formerNames: { "Primergy Power": ["Primergy Solar"] } as Record<string, string[]>,
+  /** "Perfect fit" projects: find owners that have projects like these. */
+  projects: ["Ash Creek", "Gemini", "Prairie Mist", "Bocanova", "Aktina", "Longbow"],
 };

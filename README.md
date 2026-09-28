@@ -103,6 +103,7 @@ src/store/       SQLite snapshots, triggers, qualification cache
 - [ ] Pipeline-conversion economics (e.g., 400 MW/yr built out of a multi-GW pipeline)
 
 **Phase 3: Beyond Texas and the flywheel**
-- [ ] Other queues (SPP, MISO, CAISO, PJM) and an RNG project source
+- [ ] Other interconnection queues Paul named: CAISO, PJM, ISO-NE, MISO (incl. Entergy), SPP. They're less transparent than ERCOT, so expect uneven data.
+- [ ] An RNG project source
 - [ ] Outcome tracking: meeting, submission, bound. Feed wins back into fly tuning.
 - [ ] Codified team-sale playbook (find → meeting → info → close), with riscIQ as the retention layer
