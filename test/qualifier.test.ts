@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FLIES } from "../config/flies.ts";
 import { Store } from "../src/store/db.ts";
 
+// These tests cover the Claude engine; Jev has its own in test/jev.test.ts.
+process.env.PESCADORA_QUALIFIER = "claude";
+
 const parse = vi.fn();
 vi.mock("../src/lib/claude.ts", async (orig) => ({
   ...(await orig<typeof import("../src/lib/claude.ts")>()),

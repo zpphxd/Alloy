@@ -10,6 +10,7 @@ import { downloadLatest, GIS_REPORT_TYPE_ID, listMisDocuments, parseGisReport } 
 import { parseAsOf } from "./sources/ercot/as-of.ts";
 import { fitSeeds } from "./fit/seed-fit.ts";
 import { fitToMarkdown } from "./fit/report.ts";
+import { scoreLookalikes } from "./fit/jev-lookalike.ts";
 import { diffSnapshots } from "./triggers/diff.ts";
 import { Store } from "./store/db.ts";
 import { dossier, hunt } from "./pipeline/hunt.ts";
@@ -28,10 +29,12 @@ const HELP = `pescadora: hunt for exactly the clients we want
   backfill ercot --dir <folder> | --download [--max N]
                                           Load many back GIS reports (oldest first) so the history
                                           has trigger timelines and the fit step has something to fit.
-  fit [--lookback 24]                     Measure the seed companies/projects over history and propose
-                                          a "seed-lookalike" fly. Writes data/out/fit-<date>.md.
+  fit [--lookback 24] [--jev [--top 50]]  Measure the seed companies/projects over history and propose
+                                          a "seed-lookalike" fly. --jev has Jev rank today's matches by
+                                          resemblance to the seeds. Writes data/out/fit-<date>.md.
   hunt [--qualify N] [--limit N]          Resolve owners, match flies, screen, route. Writes
-                                          data/out/hunt-<date>.{md,csv}. --qualify runs Claude on the top N.
+                                          data/out/hunt-<date>.{md,csv}. --qualify runs the qualifier
+                                          (PESCADORA_QUALIFIER=jev|claude) on the top N.
   resolve [--top N]                       Web-research unresolved owners among the top N targets.
                                           Writes data/review/owner-findings.csv for a person to confirm.
   draft --owner "<name>" [--from "Zach Powers"]
@@ -143,7 +146,10 @@ async function main() {
     }
 
     case "fit": {
-      const { values } = parseArgs({ args: [sub ?? "", ...rest].filter(Boolean), options: { lookback: { type: "string" } } });
+      const { values } = parseArgs({
+        args: [sub ?? "", ...rest].filter(Boolean),
+        options: { lookback: { type: "string" }, jev: { type: "boolean" }, top: { type: "string" } },
+      });
       const s = store();
       const ctx = await loadContext();
       const fit = fitSeeds(s.allSnapshots("ercot_gis"), LOOKALIKE_SEEDS, ctx.aliases, Number(values.lookback ?? 24));
@@ -151,7 +157,8 @@ async function main() {
       const preview = fit.proposedFly && latest ? hunt({ projects: latest.projects, flies: [fit.proposedFly], ...ctx }) : undefined;
       const date = new Date().toISOString().slice(0, 10);
       await mkdir("data/out", { recursive: true });
-      await writeFile(`data/out/fit-${date}.md`, fitToMarkdown(fit, preview));
+      const jevScores = values.jev && preview ? await scoreLookalikes(preview.targets.slice(0, Number(values.top ?? 50)), fit) : undefined;
+      await writeFile(`data/out/fit-${date}.md`, fitToMarkdown(fit, preview, jevScores));
       for (const n of fit.notes) console.log(`note: ${n}`);
       console.log(`Fit written to data/out/fit-${date}.md${preview ? ` (${preview.targets.length} current matches)` : ""}.`);
       break;

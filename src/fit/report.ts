@@ -1,11 +1,13 @@
 import type { HuntResult } from "../pipeline/hunt.ts";
+import type { LookalikeScore } from "./jev-lookalike.ts";
+import { RESEMBLANCE_RUBRIC } from "./jev-lookalike.ts";
 import type { FitResult } from "./seed-fit.ts";
 
 /** Lines that must stay adjacent (table rows, list items). */
 const table = (...rows: string[]) => rows.join("\n");
 const mw = (n: number) => `${Math.round(n).toLocaleString("en-US")} MW`;
 
-export function fitToMarkdown(f: FitResult, preview?: HuntResult): string {
+export function fitToMarkdown(f: FitResult, preview?: HuntResult, jevScores?: LookalikeScore[]): string {
   const out: string[] = [
     "# Profile fit: seed companies and projects in ERCOT history",
     `History through ${f.latestAsOf}. Lookback point: ${f.lookbackAsOf}.`,
@@ -55,6 +57,20 @@ export function fitToMarkdown(f: FitResult, preview?: HuntResult): string {
       table(
         ...preview.targets.slice(0, 50).map(
           (t, i) => `${i + 1}. **${t.owner.name}**: ${t.summary.projectCount} projects, ${mw(t.summary.mwByStage.operational)} operating`,
+        ),
+      ),
+    );
+  }
+  if (jevScores?.length) {
+    const pct = (p: number) => `${Math.round(p * 100)}%`;
+    out.push(
+      "## Jev ranking: resemblance to the seeds two years ago",
+      `Resemblance is Jev's expected score from 0 to 4: ${RESEMBLANCE_RUBRIC.map((d, i) => `${i} = ${d.split(":")[0]}`).join(", ")}.`,
+      table(
+        "| Rank | Company | Resemblance | Confidence | P(early growth) | P(independent) |",
+        "|---|---|---|---|---|---|",
+        ...jevScores.map(
+          (j, i) => `| ${i + 1} | ${j.ownerName} | ${j.resemblance.toFixed(2)} | ${pct(j.confidence)} | ${pct(j.pEarlyGrowth)} | ${pct(j.pIndependent)} |`,
         ),
       ),
     );

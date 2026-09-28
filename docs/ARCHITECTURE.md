@@ -23,7 +23,7 @@ flowchart LR
   P --> G[Fly gates<br/>deterministic code]
   G --> X[Exclusions<br/>majors, too big]
   X --> K[CRM screen<br/>Baldwin + CAC]
-  K --> Q[Qualifier<br/>Jev / Claude, yes/no per criterion]
+  K --> Q[Qualifier<br/>Jev, yes/no per criterion]
   Z --> Q
   T --> RK
   Q --> RK[Rank<br/>est. commission × triggers × warm path]
@@ -95,8 +95,10 @@ This is the deterministic yes/no that Zach described:
 4. Answers are **cached by a hash of (engine, rubric, dossier)**. The same facts always return the same answer. New facts, or a new engine, trigger a re-judgment.
 
 **Engines** (`PESCADORA_QUALIFIER`):
-- `jev` (planned verdict engine): TypeSafe's **Jev**, a non-generative "System One" model. It takes a state (the dossier) plus typed questions and returns typed answers with a probability and confidence, fast and with no free text. Each rubric criterion maps to one yes/no question. It isn't wired in yet: the adapter needs the `@typesafe-ai/sdk` package approved and network access to TypeSafe's API. It reads its key from `TYPESAFE_API_KEY`.
-- `claude` (current default): `claude-opus-5-5` at low effort, with schema-constrained output and server-side refusal fallbacks.
+- `jev` (default): TypeSafe's **Jev** via `@typesafe-ai/sdk` (`src/qualify/jev-engine.ts`). Jev is a non-generative "System One" model. The dossier goes in as the state, each rubric item is asked as a yes/no ("noul") question, and a "major or subsidiary of one?" question acts as a disqualifier. P(yes) becomes each criterion's probability. It reads `TYPESAFE_API_KEY`. Pin `TYPESAFE_DEFAULT_MODEL` to a dated model for reproducible verdicts, since the model name is part of the cache key.
+- `claude`: `claude-opus-5-5` at low effort, with schema-constrained output and server-side refusal fallbacks.
+
+Jev also ranks the fit step's lookalike matches (`fit --jev`, `src/fit/jev-lookalike.ts`). It scores each match 0-4 on resemblance to the seed companies at the lookback date, plus P(early growth) and P(independent).
 
 Claude still does the work Jev isn't built for: web research on owners and drafting outreach.
 

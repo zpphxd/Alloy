@@ -33,14 +33,14 @@ Requires Node 22.13+.
 
 ```bash
 npm install
-cp .env.example .env          # add ANTHROPIC_API_KEY; ZoomInfo creds optional
+cp .env.example .env          # add TYPESAFE_API_KEY and ANTHROPIC_API_KEY; ZoomInfo creds optional
 
 # 1. Load the ERCOT GIS report: downloads the latest, or pass the file Paul sends
 npm run pescadora -- ingest ercot --file ~/Downloads/GIS_Report_August2026.xlsx
 
 # 1b. Load years of back reports, then fit the profiles to how the seed companies grew
 npm run pescadora -- backfill ercot --download        # or: --dir <folder of GIS reports>
-npm run pescadora -- fit --lookback 24                # → data/out/fit-<date>.md
+npm run pescadora -- fit --lookback 24 --jev          # → data/out/fit-<date>.md, matches ranked by Jev
 
 # 2. Optional context (all gitignored under data/):
 #    data/linkedin/zach.csv, data/linkedin/paul.csv   LinkedIn "Connections" exports
@@ -49,7 +49,7 @@ npm run pescadora -- fit --lookback 24                # → data/out/fit-<date>.
 
 # 3. Hunt: writes data/out/hunt-<date>.md and .csv
 npm run pescadora -- hunt
-npm run pescadora -- hunt --qualify 20      # Claude yes/no on the top 20
+npm run pescadora -- hunt --qualify 20      # Jev yes/no on the top 20 (PESCADORA_QUALIFIER=claude to use Claude)
 
 # 4. Resolve unknown SPVs with web research, then confirm in data/review/owner-findings.csv
 npm run pescadora -- resolve --top 15
@@ -82,7 +82,7 @@ src/flies/       deterministic gate evaluation + exclusions
 src/screen/      Baldwin / CAC CRM screen
 src/route/       warm paths from LinkedIn exports
 src/fit/         fit profiles to history (seeds two years ago → proposed fly)
-src/qualify/     yes/no qualifier: swappable engine (Jev planned, Claude now), cached
+src/qualify/     yes/no qualifier: Jev by default (Claude alternate), cached
 src/economics/   premium + tax commission estimates (Paul's rules of thumb)
 src/enrich/      ZoomInfo (API client + saved-session loader)
 src/outreach/    draft generator (human sends)
@@ -96,7 +96,8 @@ src/store/       SQLite snapshots, triggers, qualification cache
 - [x] ERCOT GIS ingest, snapshots, trigger diff
 - [x] Flies, gates, exclusions, economics, CRM screen, warm paths, report
 - [x] Claude qualifier, web owner resolution, outreach drafts
-- [ ] Wire in the Jev qualifier engine (needs the TypeSafe SDK approved and network access to TypeSafe)
+- [x] Jev qualifier engine and Jev lookalike ranking (`fit --jev`)
+- [ ] Allow `api.typesafe.ai` in the cloud environment (or run on desktop) and do the first live Jev run
 - [ ] Run it on the real August 2026 GIS report and co-located battery report from Paul; tighten the co-located parser
 - [ ] First pass of `resolve` on the top unresolved SPVs; build out `owner-aliases.csv`
 - [ ] Load Zach's and Paul's LinkedIn exports; Baldwin + CAC account exports

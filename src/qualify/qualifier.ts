@@ -3,6 +3,7 @@ import { z } from "zod";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { Fly } from "../../config/flies.ts";
 import { FALLBACK_BETA, MODEL, assertNotRefused, claude } from "../lib/claude.ts";
+import { jevEngine } from "./jev-engine.ts";
 
 /**
  * The yes/no qualifier. Zach wants a deterministic answer to "is this one
@@ -17,10 +18,9 @@ import { FALLBACK_BETA, MODEL, assertNotRefused, claude } from "../lib/claude.ts
  *  4. Answers are cached by a hash of (engine, fly rubric, dossier). The same
  *     target with the same facts never gets re-judged differently.
  *
- * Engines are swappable. The plan is TypeSafe's Jev (a non-generative
- * "System One" model that returns typed yes/no answers with probabilities)
- * for verdicts. Claude is the default until Jev is wired in (see
- * `engineFromEnv`).
+ * Engines are swappable (see `engineFromEnv`): TypeSafe's Jev, a
+ * non-generative "System One" model that returns typed yes/no answers with
+ * probabilities (src/qualify/jev-engine.ts), or Claude.
  */
 
 export interface CriterionAnswer {
@@ -102,18 +102,17 @@ export const claudeEngine: QualifierEngine = {
   },
 };
 
-/**
- * PESCADORA_QUALIFIER selects the engine. "jev" is reserved for TypeSafe's
- * Jev. Its adapter goes in src/qualify/jev-engine.ts once the SDK is approved
- * and its API is reachable from where Pescadora runs.
- */
+/** PESCADORA_QUALIFIER selects the engine: "jev" (default, TypeSafe Jev) or "claude". */
 export function engineFromEnv(): QualifierEngine {
-  const which = process.env.PESCADORA_QUALIFIER ?? "claude";
-  if (which === "claude") return claudeEngine;
+  const which = process.env.PESCADORA_QUALIFIER ?? "jev";
   if (which === "jev") {
-    throw new Error("Jev engine not wired yet: needs @typesafe-ai/sdk approved and network access to TypeSafe's API.");
+    if (!process.env.TYPESAFE_API_KEY?.trim()) {
+      throw new Error("TYPESAFE_API_KEY is not set. Add it to .env, or set PESCADORA_QUALIFIER=claude.");
+    }
+    return jevEngine();
   }
-  throw new Error(`Unknown PESCADORA_QUALIFIER "${which}"`);
+  if (which === "claude") return claudeEngine;
+  throw new Error(`Unknown PESCADORA_QUALIFIER "${which}" (use "jev" or "claude")`);
 }
 
 export function cacheKey(fly: Fly, dossier: string, engineId: string): string {
