@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+!.env.example
+# Raw pulls and the local database stay off git: they hold licensed
+# ZoomInfo data and personal contact info.
+data/*
+!data/.gitkeep
+*.sqlite
+*.sqlite-*
+coverage/
