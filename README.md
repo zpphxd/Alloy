@@ -22,7 +22,7 @@ ZoomInfo scoops/intent ──────┘       │
                                                                                       │
           LinkedIn exports (Zach, Paul, team) ─► warm paths ──────────────────────────┤
                                                                                       ▼
-                            Claude qualifier (yes/no per criterion, cached) ─► ranked hunt report ─► drafts (human sends)
+                            Jev/Claude qualifier (yes/no per criterion, cached) ─► ranked hunt report ─► drafts (human sends)
 ```
 
 ## Quickstart
@@ -75,7 +75,7 @@ src/portfolio/   per-owner rollup by stage and technology
 src/flies/       deterministic gate evaluation + exclusions
 src/screen/      Baldwin / CAC CRM screen
 src/route/       warm paths from LinkedIn exports
-src/qualify/     Claude yes/no qualifier (structured output, cached)
+src/qualify/     yes/no qualifier: swappable engine (Jev planned, Claude now), cached
 src/economics/   premium + tax commission estimates (Paul's rules of thumb)
 src/enrich/      ZoomInfo (API client + saved-session loader)
 src/outreach/    draft generator (human sends)
@@ -89,6 +89,7 @@ src/store/       SQLite snapshots, triggers, qualification cache
 - [x] ERCOT GIS ingest, snapshots, trigger diff
 - [x] Flies, gates, exclusions, economics, CRM screen, warm paths, report
 - [x] Claude qualifier, web owner resolution, outreach drafts
+- [ ] Wire in the Jev qualifier engine (needs the TypeSafe SDK approved and network access to TypeSafe)
 - [ ] Run it on the real August 2026 GIS report and co-located battery report from Paul; tighten the co-located parser
 - [ ] First pass of `resolve` on the top unresolved SPVs; build out `owner-aliases.csv`
 - [ ] Load Zach's and Paul's LinkedIn exports; Baldwin + CAC account exports

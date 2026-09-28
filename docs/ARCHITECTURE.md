@@ -23,7 +23,7 @@ flowchart LR
   P --> G[Fly gates<br/>deterministic code]
   G --> X[Exclusions<br/>majors, too big]
   X --> K[CRM screen<br/>Baldwin + CAC]
-  K --> Q[Qualifier<br/>Claude, yes/no per criterion]
+  K --> Q[Qualifier<br/>Jev / Claude, yes/no per criterion]
   Z --> Q
   T --> RK
   Q --> RK[Rank<br/>est. commission × triggers × warm path]
@@ -86,11 +86,15 @@ Each fly has two parts:
 
 This is the deterministic yes/no that Zach described:
 1. Code applies the numeric gates before any model sees the target.
-2. Claude answers each rubric criterion separately (boolean + evidence) using **structured outputs**, a schema-constrained response with no free text to parse.
-3. **The verdict is computed in code**: yes only if every required criterion is met and there are no disqualifiers.
-4. Answers are **cached by a hash of (model, rubric, dossier)**. The same facts always return the same answer, and only new facts trigger a re-judgment.
+2. The engine answers each rubric criterion separately as a typed boolean, optionally with a probability. There's no free text to parse.
+3. **The verdict is computed in code**: yes only if every required criterion is met, each at probability ≥ 0.7 when the engine reports one, and there are no disqualifiers.
+4. Answers are **cached by a hash of (engine, rubric, dossier)**. The same facts always return the same answer. New facts, or a new engine, trigger a re-judgment.
 
-Model: `claude-opus-5-5` at low effort, with server-side refusal fallbacks enabled (`fallbacks: "default"`). Override it with `PESCADORA_MODEL`.
+**Engines** (`PESCADORA_QUALIFIER`):
+- `jev` (planned verdict engine): TypeSafe's **Jev**, a non-generative "System One" model. It takes a state (the dossier) plus typed questions and returns typed answers with a probability and confidence, fast and with no free text. Each rubric criterion maps to one yes/no question. It isn't wired in yet: the adapter needs the `@typesafe-ai/sdk` package approved and network access to TypeSafe's API. It reads its key from `TYPESAFE_API_KEY`.
+- `claude` (current default): `claude-opus-5-5` at low effort, with schema-constrained output and server-side refusal fallbacks.
+
+Claude still does the work Jev isn't built for: web research on owners and drafting outreach.
 
 ### 7. Economics: `src/economics/`
 

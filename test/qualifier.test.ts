@@ -8,7 +8,7 @@ vi.mock("../src/lib/claude.ts", async (orig) => ({
   claude: () => ({ beta: { messages: { parse } } }),
 }));
 
-const { qualify } = await import("../src/qualify/qualifier.ts");
+const { qualify, verdictFor } = await import("../src/qualify/qualifier.ts");
 const fly = FLIES.find((f) => f.id === "storage-platform")!;
 
 function reply(met: Record<string, boolean>, disqualifiers: string[] = []) {
@@ -54,4 +54,29 @@ describe("qualifier", () => {
     expect(req.output_config.effort).toBe("low");
     expect(req.output_config.format).toBeDefined();
   });
+
+  it("applies the probability floor when the engine reports probabilities (Jev-style)", () => {
+    const answer = (p: number) => ({
+      criteria: [
+        { id: "independent", met: true, probability: 0.95, evidence: "" },
+        { id: "growing", met: true, probability: p, evidence: "" },
+      ],
+      disqualifiers: [],
+      summary: "",
+    });
+    expect(verdictFor(fly, answer(0.9))).toBe("yes");
+    expect(verdictFor(fly, answer(0.55))).toBe("no");
+  });
+
+  it("keys the cache on the engine, so switching engines re-judges", async () => {
+    const store = new Store(":memory:");
+    const fake = (id: string) => ({ id, answer: vi.fn(async () => reply({ independent: true, growing: true }).parsed_output) });
+    const a = fake("claude:x");
+    const b = fake("jev:y");
+    await qualify(fly, "o4", "same", store, a);
+    await qualify(fly, "o4", "same", store, b);
+    expect(a.answer).toHaveBeenCalledTimes(1);
+    expect(b.answer).toHaveBeenCalledTimes(1);
+  });
 });
+
